@@ -158,7 +158,7 @@ You can access the plugin instance from your tests:
 
 ```python
 import pytest
-from pytest_dotenv import get_dotenv_plugin
+from pytest_dotenv_modern import get_dotenv_plugin
 
 def test_plugin_info():
     plugin = get_dotenv_plugin()
@@ -172,7 +172,7 @@ def test_plugin_info():
 ```python
 # conftest.py
 import pytest
-from pytest_dotenv.plugin import DotenvPlugin
+from pytest_dotenv_modern.plugin import DotenvPlugin
 
 @pytest.fixture(scope="session")
 def setup_custom_env(request):
@@ -192,7 +192,7 @@ def setup_custom_env(request):
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pytest-dotenv-modern.git
+git clone https://github.com/jobissjo/pytest-dotenv-modern.git
 cd pytest-dotenv-modern
 
 # Install with uv
@@ -258,7 +258,7 @@ This plugin is designed as a drop-in replacement for the original `pytest-dotenv
    from pytest_dotenv import ...
    
    # New  
-   from pytest_dotenv import ...  # Same import path!
+   from pytest_dotenv_modern import ...  # Same import path!
    ```
 
 4. Your existing configuration should work without changes!
