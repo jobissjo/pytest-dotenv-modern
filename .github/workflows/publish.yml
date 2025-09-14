@@ -1,0 +1,175 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - '.github/**'
+      - 'docs/**'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.version-check.outputs.changed }}
+      new-version: ${{ steps.version-check.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need at least 2 commits to compare
+
+      - name: Check if version changed
+        id: version-check
+        run: |
+          # Get current version from pyproject.toml
+          CURRENT_VERSION=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Get previous version from the previous commit
+          git checkout HEAD~1
+          PREVIOUS_VERSION=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml 2>/dev/null || echo "0.0.0")
+          git checkout -
+          
+          echo "Previous version: $PREVIOUS_VERSION"
+          
+          # Check if version changed
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged: $CURRENT_VERSION"
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          fi
+
+  test:
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --cov=pytest_dotenv --cov-report=xml
+
+      - name: Run linting
+        run: |
+          uv run black --check src tests
+          uv run isort --check-only src tests
+          uv run flake8 src tests
+
+      - name: Run type checking
+        run: uv run mypy src
+
+  publish:
+    needs: [check-version, test]
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    environment: production  # Optional: use GitHub environments for additional security
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build package
+        run: |
+          # Clean any previous builds
+          rm -rf dist/ build/ *.egg-info/
+          
+          # Build the package
+          uv build
+          
+          # List built files for verification
+          echo "Built files:"
+          ls -la dist/
+
+      - name: Verify build
+        run: |
+          # Check that both wheel and source distribution were created
+          if [ ! -f dist/*.whl ] || [ ! -f dist/*.tar.gz ]; then
+            echo "Error: Missing wheel or source distribution"
+            exit 1
+          fi
+          
+          # Verify package can be installed
+          uv pip install dist/*.whl
+          python -c "import pytest_dotenv; print('Package import successful')"
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          echo "Publishing version ${{ needs.check-version.outputs.new-version }} to PyPI..."
+          uv publish
+          echo "✅ Successfully published version ${{ needs.check-version.outputs.new-version }}"
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.check-version.outputs.new-version }}
+          release_name: Release v${{ needs.check-version.outputs.new-version }}
+          body: |
+            ## Changes in v${{ needs.check-version.outputs.new-version }}
+            
+            This release was automatically created when the version was updated in pyproject.toml.
+            
+            ### Installation
+            ```bash
+            pip install pytest-dotenv-modern==${{ needs.check-version.outputs.new-version }}
+            ```
+            
+            See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+          draft: false
+          prerelease: false
+
+  notify:
+    needs: [check-version, publish]
+    if: always() && needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Notify Success
+        if: needs.publish.result == 'success'
+        run: |
+          echo "🎉 Successfully published pytest-dotenv-modern v${{ needs.check-version.outputs.new-version }} to PyPI!"
+          echo "Package is now available: pip install pytest-dotenv-modern==${{ needs.check-version.outputs.new-version }}"
+
+      - name: Notify Failure
+        if: needs.publish.result == 'failure'
+        run: |
+          echo "❌ Failed to publish pytest-dotenv-modern v${{ needs.check-version.outputs.new-version }}"
+          echo "Check the logs for details."
+          exit 1
