@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-dotenv-modern"
-version = "0.1.0"
+version = "0.2.0"
 description = "A modern pytest plugin that loads environment variables from dotenv files"
 readme = "README.md"
 license = {text = "MIT"}
@@ -43,9 +43,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/pytest-dotenv-modern"
-Repository = "https://github.com/yourusername/pytest-dotenv-modern"
-Issues = "https://github.com/yourusername/pytest-dotenv-modern/issues"
+Homepage = "https://github.com/jobissjo/pytest-dotenv-modern"
+Repository = "https://github.com/jobissjo/pytest-dotenv-modern"
+Issues = "https://github.com/jobissjo/pytest-dotenv-modern/issues"
 
 [project.entry-points.pytest11]
 dotenv = "pytest_dotenv_modern.plugin"
