@@ -101,7 +101,10 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     pass
 
 
-
+# Configuration options for pytest.ini
+def pytest_configure_node(node) -> None:
+    """Configure individual test nodes (for distributed testing support)."""
+    pass
 
 
 # Register configuration options
@@ -166,6 +169,39 @@ def get_dotenv_plugin() -> Optional[DotenvPlugin]:
     return _dotenv_plugin_instance
 
 
+def _load_pyproject_config():
+    """Load configuration from pyproject.toml if available."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib
+        except ImportError:
+            return {}, False
+    
+    pyproject_path = Path("pyproject.toml")
+    if not pyproject_path.exists():
+        return {}, False
+    
+    try:
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+        
+        dotenv_config = data.get("tool", {}).get("pytest-dotenv", {})
+        if dotenv_config:
+            return dotenv_config, True
+        
+        # Also check tool.pytest.ini_options for compatibility
+        pytest_config = data.get("tool", {}).get("pytest", {}).get("ini_options", {})
+        return {
+            "env_files": pytest_config.get("env_files", []),
+            "env_override_existing_values": pytest_config.get("env_override_existing_values", False)
+        }, bool(pytest_config.get("env_files") or pytest_config.get("env_override_existing_values"))
+        
+    except Exception:
+        return {}, False
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     """Configure the plugin (implementation with tryfirst=True for early execution)."""
@@ -180,9 +216,14 @@ def pytest_configure(config: pytest.Config) -> None:
     envfiles_from_config = config.getini("env_files") or []
     override_from_config = config.getini("env_override_existing_values")
     
-    # Combine CLI and config file options
-    all_envfiles = list(envfiles_from_cli) + list(envfiles_from_config)
-    should_override = override_from_cli or bool(override_from_config)
+    # Try to load from pyproject.toml as well
+    pyproject_config, has_pyproject_config = _load_pyproject_config()
+    envfiles_from_pyproject = pyproject_config.get("env_files", [])
+    override_from_pyproject = pyproject_config.get("env_override_existing_values", False)
+    
+    # Combine all sources (CLI has highest priority, then pytest.ini, then pyproject.toml)
+    all_envfiles = list(envfiles_from_cli) + list(envfiles_from_config) + list(envfiles_from_pyproject)
+    should_override = override_from_cli or bool(override_from_config) or bool(override_from_pyproject)
     
     # If no specific files are provided, try to load default .env file
     if not all_envfiles:

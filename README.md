@@ -65,6 +65,16 @@ env_files =
 env_override_existing_values = 1
 ```
 
+You can also add configuration to your `pyproject.toml`:
+
+```toml
+[tool.pytest-dotenv]
+env_files = [".env", ".env.test", ".env.local"]
+env_override_existing_values = true
+```
+
+Alternative 
+
 ### Command Line
 
 Use command line options for one-off overrides:
